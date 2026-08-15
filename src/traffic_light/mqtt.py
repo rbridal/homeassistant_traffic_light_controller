@@ -63,6 +63,17 @@ class TrafficLightMQTT:
         self.online_state_topic = f"{self.online_base}/state"
         self.online_discovery_topic = f"{self.online_base}/config"
 
+        # Individual read-only light entities
+        self.light_colors = ("red", "yellow", "green")
+        self.light_state_topics = {
+            color: f"{DISCOVERY_PREFIX}/light/{self.device_id}_{color}/state"
+            for color in self.light_colors
+        }
+        self.light_discovery_topics = {
+            color: f"{DISCOVERY_PREFIX}/light/{self.device_id}_{color}/config"
+            for color in self.light_colors
+        }
+
         self._client: Client | None = None
         self._stop = asyncio.Event()
 
@@ -107,6 +118,28 @@ class TrafficLightMQTT:
             "retain": True,
         }
 
+    def _light_discovery_payload(self, color: str) -> dict[str, Any]:
+        """Read-only light entity for a single color."""
+        icons = {
+            "red": "mdi:circle",
+            "yellow": "mdi:circle",
+            "green": "mdi:circle",
+        }
+        return {
+            "name": f"{self.device_name} {color.capitalize()}",
+            "unique_id": f"{self.device_id}_{color}",
+            "state_topic": self.light_state_topics[color],
+            "payload_on": "ON",
+            "payload_off": "OFF",
+            "availability_topic": self.availability_topic,
+            "payload_available": AVAILABILITY_ONLINE,
+            "payload_not_available": AVAILABILITY_OFFLINE,
+            "device": self._device_info(),
+            "icon": icons.get(color, "mdi:circle"),
+            "retain": True,
+            # No command_topic → read-only
+        }
+
     async def _publish_discovery(self, client: Client) -> None:
         # Select entity
         payload = json.dumps(self._discovery_payload())
@@ -125,7 +158,20 @@ class TrafficLightMQTT:
             qos=1,
             retain=True,
         )
-        logger.info("Published MQTT discovery config (select + online sensor)")
+
+        # Individual color lights (read-only)
+        for color in self.light_colors:
+            light_payload = json.dumps(self._light_discovery_payload(color))
+            await client.publish(
+                self.light_discovery_topics[color],
+                light_payload,
+                qos=1,
+                retain=True,
+            )
+
+        logger.info(
+            "Published MQTT discovery config (select + online sensor + 3 lights)"
+        )
 
     async def _publish_availability(self, client: Client, online: bool) -> None:
         payload = AVAILABILITY_ONLINE if online else AVAILABILITY_OFFLINE
@@ -150,6 +196,21 @@ class TrafficLightMQTT:
             qos=1,
             retain=True,
         )
+
+        # Derive and publish individual light states
+        active = {
+            "red": mode in ("red", "all"),
+            "yellow": mode in ("yellow", "all"),
+            "green": mode in ("green", "all"),
+        }
+        for color, is_on in active.items():
+            await client.publish(
+                self.light_state_topics[color],
+                "ON" if is_on else "OFF",
+                qos=1,
+                retain=True,
+            )
+
         logger.debug("Published state: %s", mode)
 
     async def _handle_message(self, topic: str, payload: str) -> None:
