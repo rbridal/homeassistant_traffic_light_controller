@@ -1,0 +1,19 @@
+# Secrets
+config.yaml
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+.venv/
+env/
+.env
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store

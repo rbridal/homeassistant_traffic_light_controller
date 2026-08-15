@@ -1,0 +1,27 @@
+[Unit]
+Description=Shop Traffic Light Control Service (MQTT)
+Documentation=https://github.com/rbridal/homeassistant_traffic_light_controller
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=rbridal
+Group=rbridal
+WorkingDirectory=/opt/traffic-light-control
+ExecStart=/opt/traffic-light-control/venv/bin/python -m traffic_light.main -c /opt/traffic-light-control/config.yaml
+Restart=always
+RestartSec=5
+# Give the process a clean environment
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=/opt/traffic-light-control/src
+
+# Security hardening (optional but recommended)
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/traffic-light-control
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
