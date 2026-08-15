@@ -58,6 +58,11 @@ class TrafficLightMQTT:
         self.availability_topic = f"{self.base}/availability"
         self.discovery_topic = f"{self.base}/config"
 
+        # Binary sensor for online status
+        self.online_base = f"{DISCOVERY_PREFIX}/binary_sensor/{self.device_id}_online"
+        self.online_state_topic = f"{self.online_base}/state"
+        self.online_discovery_topic = f"{self.online_base}/config"
+
         self._client: Client | None = None
         self._stop = asyncio.Event()
 
@@ -85,7 +90,25 @@ class TrafficLightMQTT:
             "retain": True,
         }
 
+    def _online_discovery_payload(self) -> dict[str, Any]:
+        return {
+            "name": f"{self.device_name} Online",
+            "unique_id": f"{self.device_id}_online",
+            "state_topic": self.online_state_topic,
+            "payload_on": AVAILABILITY_ONLINE,
+            "payload_off": AVAILABILITY_OFFLINE,
+            "availability_topic": self.availability_topic,
+            "payload_available": AVAILABILITY_ONLINE,
+            "payload_not_available": AVAILABILITY_OFFLINE,
+            "device_class": "connectivity",
+            "entity_category": "diagnostic",
+            "device": self._device_info(),
+            "icon": "mdi:lan-connect",
+            "retain": True,
+        }
+
     async def _publish_discovery(self, client: Client) -> None:
+        # Select entity
         payload = json.dumps(self._discovery_payload())
         await client.publish(
             self.discovery_topic,
@@ -93,12 +116,28 @@ class TrafficLightMQTT:
             qos=1,
             retain=True,
         )
-        logger.info("Published MQTT discovery config")
+
+        # Online binary sensor
+        online_payload = json.dumps(self._online_discovery_payload())
+        await client.publish(
+            self.online_discovery_topic,
+            online_payload,
+            qos=1,
+            retain=True,
+        )
+        logger.info("Published MQTT discovery config (select + online sensor)")
 
     async def _publish_availability(self, client: Client, online: bool) -> None:
         payload = AVAILABILITY_ONLINE if online else AVAILABILITY_OFFLINE
         await client.publish(
             self.availability_topic,
+            payload,
+            qos=1,
+            retain=True,
+        )
+        # Also publish to the dedicated online binary_sensor state topic
+        await client.publish(
+            self.online_state_topic,
             payload,
             qos=1,
             retain=True,
